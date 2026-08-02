@@ -1,7 +1,7 @@
 #!/bin/bash
-# Packages MultiClock.app into a distributable .dmg.
+# Packages MultiClock.app into a distributable .dmg with a styled installer window.
 #
-#   ./package.sh                    build universal, ad-hoc sign, make DMG
+#   ./package.sh                             build universal, ad-hoc sign, make DMG
 #   NOTARY_PROFILE=multiclock ./package.sh   also notarize + staple
 #
 # Notarization needs an Apple Developer Program membership and a Developer ID
@@ -23,39 +23,116 @@ VOL_NAME="${APP_NAME}"
 
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist)
 DMG_PATH="build/${APP_NAME}-${VERSION}.dmg"
+RW_DMG="build/${APP_NAME}-rw.dmg"
+
+# Installer window geometry. These MUST match the constants in
+# Tools/GenerateDMGBackground.swift or the arrow won't line up with the icons.
+WIN_WIDTH=660
+WIN_HEIGHT=420
+WIN_LEFT=200
+WIN_TOP=120
+ICON_SIZE=128
+APP_ICON_X=170
+APPLICATIONS_X=490
+# Finder measures icon positions from the top of the window; the background is drawn
+# from the bottom. 420 - 250 = 170.
+ICON_Y=170
 
 # --- Build ---------------------------------------------------------------------
 # Universal by default: a distributed build shouldn't exclude Intel Macs.
 echo "==> Building universal app"
 UNIVERSAL=1 ./build.sh
 
-# --- Verify the signature we're about to ship -----------------------------------
 SIGN_INFO=$(codesign -dv "${APP_BUNDLE}" 2>&1)
 IS_ADHOC=0
 if grep -q "adhoc" <<<"${SIGN_INFO}"; then
     IS_ADHOC=1
 fi
 
-# --- Stage the DMG contents -----------------------------------------------------
+# --- Installer background -------------------------------------------------------
+echo "==> Rendering installer background"
+BG_DIR="build/dmg-background"
+rm -rf "${BG_DIR}"
+swift Tools/GenerateDMGBackground.swift "${BG_DIR}" >/dev/null
+# A multi-resolution TIFF: Finder maps the background 1:1 to points, so shipping only
+# the 2x PNG would double the window size rather than sharpen it.
+tiffutil -cathidpicheck "${BG_DIR}/background.png" "${BG_DIR}/background@2x.png" \
+    -out "${BG_DIR}/background.tiff" >/dev/null
+
+# --- Stage ----------------------------------------------------------------------
 echo "==> Staging disk image contents"
-STAGING=$(mktemp -d)
-trap 'rm -rf "${STAGING}"' EXIT
+STAGING="build/dmg-staging"
+rm -rf "${STAGING}"
+mkdir -p "${STAGING}/.background"
 
 cp -R "${APP_BUNDLE}" "${STAGING}/"
-# The conventional drag-to-install affordance.
 ln -s /Applications "${STAGING}/Applications"
+cp "${BG_DIR}/background.tiff" "${STAGING}/.background/background.tiff"
 
-# --- Build the DMG --------------------------------------------------------------
-echo "==> Creating ${DMG_PATH}"
-rm -f "${DMG_PATH}"
+# --- Writable image, so Finder can record the window layout ----------------------
+echo "==> Creating writable image"
+rm -f "${RW_DMG}" "${DMG_PATH}"
+# Slack on top of the payload: the .DS_Store holding the layout is written after the
+# image is sized, and a full volume silently loses it.
+SIZE_MB=$(( $(du -sm "${STAGING}" | cut -f1) + 60 ))
 hdiutil create \
     -volname "${VOL_NAME}" \
     -srcfolder "${STAGING}" \
     -ov \
-    -format UDZO \
-    "${DMG_PATH}" >/dev/null
+    -format UDRW \
+    -size "${SIZE_MB}m" \
+    "${RW_DMG}" >/dev/null
 
-# --- Sign / notarize the DMG ----------------------------------------------------
+MOUNT_DIR="/Volumes/${VOL_NAME}"
+hdiutil attach "${RW_DMG}" -noautoopen >/dev/null
+trap 'hdiutil detach "${MOUNT_DIR}" -force >/dev/null 2>&1 || true' EXIT
+
+# --- Style the window -----------------------------------------------------------
+echo "==> Applying installer window layout"
+STYLED=1
+osascript <<EOF >/dev/null 2>&1 || STYLED=0
+tell application "Finder"
+    tell disk "${VOL_NAME}"
+        open
+        set current view of container window to icon view
+        set toolbar visible of container window to false
+        set statusbar visible of container window to false
+        set the bounds of container window to {${WIN_LEFT}, ${WIN_TOP}, $((WIN_LEFT + WIN_WIDTH)), $((WIN_TOP + WIN_HEIGHT))}
+        set opts to the icon view options of container window
+        set arrangement of opts to not arranged
+        set icon size of opts to ${ICON_SIZE}
+        set text size of opts to 12
+        set background picture of opts to file ".background:background.tiff"
+        set position of item "${APP_NAME}.app" of container window to {${APP_ICON_X}, ${ICON_Y}}
+        set position of item "Applications" of container window to {${APPLICATIONS_X}, ${ICON_Y}}
+        update without registering applications
+        delay 2
+        close
+    end tell
+end tell
+EOF
+
+if [[ "${STYLED}" == "0" ]]; then
+    echo "    WARNING: Finder styling failed. The DMG is still usable (the app and the"
+    echo "             Applications shortcut are both there) but the window will open"
+    echo "             unstyled. Grant Terminal permission to control Finder under"
+    echo "             System Settings > Privacy & Security > Automation, then re-run."
+else
+    echo "    layout recorded"
+fi
+
+# Let Finder flush the .DS_Store holding the layout before the volume goes away.
+sync
+sleep 1
+hdiutil detach "${MOUNT_DIR}" >/dev/null 2>&1 || hdiutil detach "${MOUNT_DIR}" -force >/dev/null
+trap - EXIT
+
+# --- Compress -------------------------------------------------------------------
+echo "==> Compressing"
+hdiutil convert "${RW_DMG}" -format UDZO -imagekey zlib-level=9 -o "${DMG_PATH}" >/dev/null
+rm -f "${RW_DMG}"
+
+# --- Sign / notarize ------------------------------------------------------------
 if [[ "${IS_ADHOC}" == "0" ]]; then
     SIGN_ID=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/' || true)
     echo "==> Signing disk image"
@@ -63,16 +140,14 @@ if [[ "${IS_ADHOC}" == "0" ]]; then
 
     if [[ -n "${NOTARY_PROFILE:-}" ]]; then
         echo "==> Submitting for notarization (this takes a few minutes)"
-        xcrun notarytool submit "${DMG_PATH}" \
-            --keychain-profile "${NOTARY_PROFILE}" \
-            --wait
-
+        xcrun notarytool submit "${DMG_PATH}" --keychain-profile "${NOTARY_PROFILE}" --wait
         echo "==> Stapling ticket"
-        # Stapling embeds the ticket so the app validates even offline.
         xcrun stapler staple "${DMG_PATH}"
         xcrun stapler validate "${DMG_PATH}"
     fi
 fi
+
+rm -rf "${STAGING}" "${BG_DIR}"
 
 echo ""
 echo "==> Done: ${DMG_PATH}"
