@@ -99,11 +99,14 @@ private struct TimeZonePicker: View {
     @State private var query = ""
     @State private var selection: String?
 
+    /// Sorted once, not on every keystroke — `identifiers` is recomputed each time the
+    /// search field changes.
+    private static let allIdentifiers = TimeZone.knownTimeZoneIdentifiers.sorted()
+
     private var identifiers: [String] {
-        let all = TimeZone.knownTimeZoneIdentifiers.sorted()
-        guard !query.isEmpty else { return all }
+        guard !query.isEmpty else { return Self.allIdentifiers }
         // Match on the human-facing city too, so "new york" finds America/New_York.
-        return all.filter {
+        return Self.allIdentifiers.filter {
             $0.localizedCaseInsensitiveContains(query)
                 || Clock.suggestedLabel(for: $0).localizedCaseInsensitiveContains(query)
         }
@@ -179,13 +182,16 @@ private struct GeneralSettingsView: View {
         .formStyle(.grouped)
         .onChange(of: store.showSecondsInMenuBar) { syncTickerResolution() }
         .onChange(of: store.showSecondsInPanel) { syncTickerResolution() }
-        .onAppear { syncTickerResolution() }
+        .onAppear {
+            syncTickerResolution()
+            store.refreshLaunchAtLogin()
+        }
     }
 
     private var launchAtLogin: Binding<Bool> {
         Binding(
-            get: { store.launchAtLogin },
-            set: { store.launchAtLogin = $0 }
+            get: { store.launchAtLoginEnabled },
+            set: { store.setLaunchAtLogin($0) }
         )
     }
 

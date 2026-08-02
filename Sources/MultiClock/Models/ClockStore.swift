@@ -112,21 +112,41 @@ final class ClockStore: ObservableObject {
 
     // MARK: - Launch at login
 
-    /// Reads through to the system rather than caching: the user can revoke this in
-    /// System Settings at any time, and a cached value would silently disagree.
-    var launchAtLogin: Bool {
-        get { SMAppService.mainApp.status == .enabled }
-        set {
+    /// Cached because `SMAppService.mainApp.status` is a synchronous XPC round trip
+    /// that measures ~660ms warm and ~960ms cold on this machine. Reading it from a
+    /// computed property meant every SwiftUI body evaluation that touched it stalled
+    /// the main thread for about a second — including, via this shared store, typing
+    /// in an unrelated text field on another settings tab.
+    @Published private(set) var launchAtLoginEnabled = false
+
+    /// Re-reads the real system state off the main thread. Call on appear: the user
+    /// can revoke the registration in System Settings without the app knowing.
+    func refreshLaunchAtLogin() {
+        Task.detached(priority: .utility) {
+            let enabled = SMAppService.mainApp.status == .enabled
+            await MainActor.run { ClockStore.shared.launchAtLoginEnabled = enabled }
+        }
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        // Update optimistically so the toggle responds instantly, then reconcile with
+        // whatever the system actually did.
+        launchAtLoginEnabled = enabled
+
+        Task.detached(priority: .userInitiated) {
             do {
-                if newValue {
+                if enabled {
                     try SMAppService.mainApp.register()
                 } else {
-                    try SMAppService.mainApp.unregister()
+                    // Resolves to the async overload in this context.
+                    try await SMAppService.mainApp.unregister()
                 }
             } catch {
                 NSLog("MultiClock: launch-at-login toggle failed: \(error.localizedDescription)")
             }
-            objectWillChange.send()
+
+            let actual = SMAppService.mainApp.status == .enabled
+            await MainActor.run { ClockStore.shared.launchAtLoginEnabled = actual }
         }
     }
 }
