@@ -36,6 +36,15 @@ cask "multiclock" do
 
   app "MultiClock.app"
 
+  # The build is ad-hoc signed, not notarized, so Homebrew's quarantine flag would
+  # make Gatekeeper refuse the first launch (and possibly trash the app). Clearing
+  # it here spares the user a manual xattr step. This is why the cask lives in a
+  # personal tap: the official homebrew-cask repo forbids postflight for this.
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args: ["-dr", "com.apple.quarantine", "#{appdir}/MultiClock.app"]
+  end
+
   # Everything the app writes, so 'brew uninstall --zap' leaves nothing behind.
   zap trash: [
     "~/Library/Preferences/com.neolunar7.multiclock.plist",
@@ -43,16 +52,12 @@ cask "multiclock" do
   ]
 
   caveats <<~CAVEATS
-    MultiClock is not notarized by Apple, so Homebrew quarantines it and
-    Gatekeeper will refuse the first launch — and macOS may move the app
-    straight to the Trash rather than just refusing.
-
-    Clear the flag BEFORE opening it for the first time:
+    MultiClock is ad-hoc signed, not notarized by Apple. This cask clears the
+    quarantine flag after install (see its postflight), so it opens normally.
+    If you install the DMG by hand instead, clear the flag yourself BEFORE the
+    first launch:
 
       xattr -dr com.apple.quarantine /Applications/MultiClock.app
-
-    Homebrew 6 has no --no-quarantine option; it was removed, so this step
-    cannot be skipped at install time.
   CAVEATS
 end
 EOF
