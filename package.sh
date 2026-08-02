@@ -25,18 +25,11 @@ VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resourc
 DMG_PATH="build/${APP_NAME}-${VERSION}.dmg"
 RW_DMG="build/${APP_NAME}-rw.dmg"
 
-# Installer window geometry. These MUST match the constants in
-# Tools/GenerateDMGBackground.swift or the arrow won't line up with the icons.
-WIN_WIDTH=660
-WIN_HEIGHT=420
+# Where the installer window opens on screen. The window's *size* and the icon
+# positions inside it are not set here — they come from geometry.sh, emitted by
+# Tools/GenerateDMGBackground.swift, so the arrow and the icons cannot disagree.
 WIN_LEFT=200
 WIN_TOP=120
-ICON_SIZE=128
-APP_ICON_X=170
-APPLICATIONS_X=490
-# Finder measures icon positions from the top of the window; the background is drawn
-# from the bottom. 420 - 250 = 170.
-ICON_Y=170
 
 # --- Build ---------------------------------------------------------------------
 # Universal by default: a distributed build shouldn't exclude Intel Macs.
@@ -58,6 +51,11 @@ swift Tools/GenerateDMGBackground.swift "${BG_DIR}" >/dev/null
 # the 2x PNG would double the window size rather than sharpen it.
 tiffutil -cathidpicheck "${BG_DIR}/background.png" "${BG_DIR}/background@2x.png" \
     -out "${BG_DIR}/background.tiff" >/dev/null
+
+# The drawing code owns the layout; adopt its numbers rather than repeating them.
+# shellcheck source=/dev/null
+source "${BG_DIR}/geometry.sh"
+: "${DMG_WIN_WIDTH:?geometry.sh did not define the window size}"
 
 # --- Stage ----------------------------------------------------------------------
 echo "==> Staging disk image contents"
@@ -97,14 +95,14 @@ tell application "Finder"
         set current view of container window to icon view
         set toolbar visible of container window to false
         set statusbar visible of container window to false
-        set the bounds of container window to {${WIN_LEFT}, ${WIN_TOP}, $((WIN_LEFT + WIN_WIDTH)), $((WIN_TOP + WIN_HEIGHT))}
+        set the bounds of container window to {${WIN_LEFT}, ${WIN_TOP}, $((WIN_LEFT + DMG_WIN_WIDTH)), $((WIN_TOP + DMG_WIN_HEIGHT))}
         set opts to the icon view options of container window
         set arrangement of opts to not arranged
-        set icon size of opts to ${ICON_SIZE}
+        set icon size of opts to ${DMG_ICON_SIZE}
         set text size of opts to 12
         set background picture of opts to file ".background:background.tiff"
-        set position of item "${APP_NAME}.app" of container window to {${APP_ICON_X}, ${ICON_Y}}
-        set position of item "Applications" of container window to {${APPLICATIONS_X}, ${ICON_Y}}
+        set position of item "${APP_NAME}.app" of container window to {${DMG_APP_ICON_X}, ${DMG_ICON_Y}}
+        set position of item "Applications" of container window to {${DMG_APPLICATIONS_X}, ${DMG_ICON_Y}}
         update without registering applications
         delay 2
         close
@@ -120,6 +118,9 @@ if [[ "${STYLED}" == "0" ]]; then
 else
     echo "    layout recorded"
 fi
+
+# Mounting read-write leaves this behind; it ships otherwise, hidden but pointless.
+rm -rf "${MOUNT_DIR}/.fseventsd"
 
 # Let Finder flush the .DS_Store holding the layout before the volume goes away.
 sync

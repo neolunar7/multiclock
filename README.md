@@ -90,12 +90,20 @@ window size instead of sharpening it. The window layout itself is recorded by dr
 Finder with AppleScript on a writable image, which is then compressed to the final
 read-only DMG.
 
-The icon coordinates live in *two* places — the constants at the top of
-`package.sh` and the ones in `GenerateDMGBackground.swift`. They must agree, or the
-arrow won't line up with the icons.
+`GenerateDMGBackground.swift` is the single source of truth for the layout: alongside
+the images it emits a `geometry.sh` that `package.sh` sources for the window size,
+icon size and icon positions. The arrow is drawn from the same constants Finder is
+told to use, so the two cannot drift apart. It also flips the Y coordinate in one
+place — Finder measures icon positions from the top of the window, the background is
+drawn from the bottom.
 
 If Finder styling fails (it needs Automation permission), `package.sh` says so and
 still produces a working, unstyled DMG rather than failing the build.
+
+**Replacing an installed copy:** dragging onto an existing `MultiClock.app` prompts to
+replace it, and replacing a *running* app misbehaves. Quit it first (⌘Q from the
+panel). Preferences live in `~/Library/Preferences/com.neolunar7.multiclock.plist` and
+survive a reinstall, so clocks come back untouched.
 
 **A DMG alone is not enough for other people to run it.** macOS attaches a quarantine
 flag to anything downloaded, and Gatekeeper refuses to open apps that aren't signed
