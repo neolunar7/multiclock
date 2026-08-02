@@ -20,9 +20,13 @@ private struct ClocksSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Drag to reorder. The order here is the order shown in the dropdown.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Drag to reorder. The order here is the order shown in the dropdown.")
+                Text("The clock at the top is the one shown in the menu bar.")
+            }
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
 
             List {
                 ForEach($store.clocks) { $clock in
@@ -150,13 +154,14 @@ private struct GeneralSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Picker("Show in menu bar:", selection: menuBarSelection) {
-                    ForEach(store.clocks) { clock in
-                        Text(clock.label.isEmpty ? clock.timeZoneID : clock.label)
-                            .tag(clock.id as UUID?)
-                    }
+                // Which clock appears here isn't configurable in this tab: it's the
+                // first row on the Clocks tab, changed by dragging.
+                LabeledContent("Menu bar clock:") {
+                    Text(store.primaryClock.map { clock in
+                        clock.label.isEmpty ? clock.timeZoneID : clock.label
+                    } ?? "None")
+                    .foregroundStyle(.secondary)
                 }
-                .disabled(store.clocks.isEmpty)
 
                 Toggle("Show label next to time", isOn: $store.showLabelInMenuBar)
             }
@@ -175,15 +180,6 @@ private struct GeneralSettingsView: View {
         .onChange(of: store.showSecondsInMenuBar) { syncTickerResolution() }
         .onChange(of: store.showSecondsInPanel) { syncTickerResolution() }
         .onAppear { syncTickerResolution() }
-    }
-
-    /// The picker needs a non-optional round-trip; `primaryClock` already resolves
-    /// the nil case to the first clock.
-    private var menuBarSelection: Binding<UUID?> {
-        Binding(
-            get: { store.primaryClock?.id },
-            set: { store.primaryClockID = $0 }
-        )
     }
 
     private var launchAtLogin: Binding<Bool> {

@@ -21,6 +21,8 @@ menu bar:  ⌁  NY 10:23   🔋 84%  ⌘
 
 - One menu bar item, any number of clocks in the dropdown
 - Per-clock custom label, drag to reorder
+- The clock at the top of the list is the one shown in the menu bar — reordering is
+  how you change it, so there's no separate setting to keep in sync with the order
 - Day-offset badge (`+1` / `−1`) when a zone is on a different calendar day
 - Relative offset from your local zone ("13h ahead"), which is the number you
   actually need when scheduling a call

@@ -10,9 +10,8 @@ import ServiceManagement
 final class ClockStore: ObservableObject {
     static let shared = ClockStore()
 
+    /// Order is meaningful: the first clock is the one shown in the menu bar.
     @Published var clocks: [Clock] { didSet { save() } }
-    /// Which clock is rendered in the menu bar itself. Falls back to the first clock.
-    @Published var primaryClockID: UUID? { didSet { save() } }
     @Published var use24Hour: Bool { didSet { save() } }
     @Published var showSecondsInMenuBar: Bool { didSet { save() } }
     @Published var showSecondsInPanel: Bool { didSet { save() } }
@@ -23,7 +22,9 @@ final class ClockStore: ObservableObject {
 
     private enum Key {
         static let clocks = "clocks"
-        static let primary = "primaryClockID"
+        /// Only read once, to migrate installs from when the menu bar clock was
+        /// picked explicitly rather than derived from order.
+        static let legacyPrimary = "primaryClockID"
         static let use24Hour = "use24Hour"
         static let secondsMenuBar = "showSecondsInMenuBar"
         static let secondsPanel = "showSecondsInPanel"
@@ -37,18 +38,31 @@ final class ClockStore: ObservableObject {
             .flatMap { try? JSONDecoder().decode([Clock].self, from: $0) }
         clocks = stored ?? Self.defaultClocks()
 
-        primaryClockID = defaults.string(forKey: Key.primary).flatMap(UUID.init(uuidString:))
         use24Hour = defaults.object(forKey: Key.use24Hour) as? Bool ?? true
         showSecondsInMenuBar = defaults.object(forKey: Key.secondsMenuBar) as? Bool ?? false
         showSecondsInPanel = defaults.object(forKey: Key.secondsPanel) as? Bool ?? false
         showLabelInMenuBar = defaults.object(forKey: Key.labelInMenuBar) as? Bool ?? true
 
-        isLoading = false
+        migrateLegacyPrimaryClock()
 
-        // A stale primary (clock deleted in a previous run) would blank the menu bar.
-        if let id = primaryClockID, !clocks.contains(where: { $0.id == id }) {
-            primaryClockID = clocks.first?.id
-        }
+        isLoading = false
+    }
+
+    /// The menu bar clock used to be chosen with a picker; it's now whichever clock
+    /// sorts first. Promote the previously-picked clock so an upgrade doesn't
+    /// silently swap what someone sees in their menu bar.
+    private func migrateLegacyPrimaryClock() {
+        defer { defaults.removeObject(forKey: Key.legacyPrimary) }
+
+        guard let stored = defaults.string(forKey: Key.legacyPrimary),
+              let id = UUID(uuidString: stored),
+              let index = clocks.firstIndex(where: { $0.id == id }),
+              index != 0
+        else { return }
+
+        let promoted = clocks.remove(at: index)
+        clocks.insert(promoted, at: 0)
+        save(force: true)
     }
 
     /// Seeded so a fresh install shows something meaningful instead of an empty menu bar.
@@ -59,27 +73,22 @@ final class ClockStore: ObservableObject {
         ]
     }
 
+    /// The clock shown in the menu bar: always the first, so dragging a row to the
+    /// top is how you change it.
     var primaryClock: Clock? {
-        if let id = primaryClockID, let match = clocks.first(where: { $0.id == id }) {
-            return match
-        }
-        return clocks.first
+        clocks.first
     }
 
     // MARK: - Mutation
 
     func addClock(timeZoneID: String) {
         let clock = Clock(label: Clock.suggestedLabel(for: timeZoneID), timeZoneID: timeZoneID)
+        // Appended, not inserted: adding a clock shouldn't hijack the menu bar.
         clocks.append(clock)
-        if primaryClockID == nil { primaryClockID = clock.id }
     }
 
     func removeClocks(at offsets: IndexSet) {
-        let removed = offsets.map { clocks[$0].id }
         clocks.remove(atOffsets: offsets)
-        if let id = primaryClockID, removed.contains(id) {
-            primaryClockID = clocks.first?.id
-        }
     }
 
     func moveClocks(from source: IndexSet, to destination: Int) {
@@ -88,12 +97,13 @@ final class ClockStore: ObservableObject {
 
     // MARK: - Persistence
 
-    private func save() {
-        guard !isLoading else { return }
+    /// `force` is for writes during init, where `isLoading` is still suppressing the
+    /// `didSet` saves (the migration needs its reorder persisted).
+    private func save(force: Bool = false) {
+        guard force || !isLoading else { return }
         if let data = try? JSONEncoder().encode(clocks) {
             defaults.set(data, forKey: Key.clocks)
         }
-        defaults.set(primaryClockID?.uuidString, forKey: Key.primary)
         defaults.set(use24Hour, forKey: Key.use24Hour)
         defaults.set(showSecondsInMenuBar, forKey: Key.secondsMenuBar)
         defaults.set(showSecondsInPanel, forKey: Key.secondsPanel)
