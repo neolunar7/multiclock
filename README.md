@@ -40,6 +40,12 @@ current version, so `brew upgrade` doesn't break it. The formula can't create it
 you — Homebrew sandboxes post-install steps and the sandbox refuses writes to
 `/Applications`. On `brew uninstall`, remove the link too.
 
+**Known limitation: Spotlight does not index symlinked apps**, so MultiClock won't
+come up in Spotlight search. Launch it with `open -a MultiClock` (or from
+`/Applications` in Finder); after that it lives in the menu bar, so in practice this
+bites once. If you'd rather have Spotlight and don't mind re-copying after upgrades,
+use `cp -R` instead of `ln -s`.
+
 Alternatively, download the DMG from
 [Releases](https://github.com/neolunar7/multiclock/releases) and drag it into
 Applications — but a downloaded app **is** quarantined, so clear the flag yourself
@@ -49,6 +55,27 @@ straight to the Trash:
 ```sh
 xattr -dr com.apple.quarantine /Applications/MultiClock.app
 ```
+
+### Why it's distributed this way
+
+The only friction-free path Apple offers is Developer ID signing plus notarization,
+which needs a paid Apple Developer membership (US$99/yr) — it's why essentially every
+serious open-source Mac app (Stats, Rectangle, Maccy, …) pays despite being free.
+This project doesn't, so the friction has to live somewhere:
+
+- **The formula** builds locally, so the app is never a downloaded executable and the
+  quarantine flag never exists — nothing is bypassed. Cost: the `ln` step, the
+  Spotlight limitation above, and needing current Command Line Tools.
+- **The DMG** is a downloaded executable, so it *is* quarantined and needs the manual
+  `xattr` before first launch. This is the de-facto standard for unnotarized
+  open-source apps.
+- A cask is deliberately **not** offered: Homebrew has deprecated `--no-quarantine`
+  and disables unnotarized casks in its main repo from 2026-09-01, and stripping
+  quarantine in a cask's postflight would disable a security check on the user's
+  behalf.
+
+If this app ever outgrows friends-scale distribution, notarization is the answer;
+`build.sh` and `package.sh` already support it (see Distributing below).
 
 ## Features
 
