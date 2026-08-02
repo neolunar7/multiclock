@@ -10,12 +10,17 @@ which supports only one additional time zone per instance.
 menu bar:  ⌁  NY 10:23   🔋 84%  ⌘
               └───┬───┘
                 click ↓
-         ┌────────────────────────┐
-         │ New York   10:23  Sat  │
-         │ San Fran.  07:23  Sat  │
-         │ Seoul      23:23  Sat+1│
-         └────────────────────────┘
+         ┌──────────────────────────┐
+         │ NY            10:23  Sat │
+         │  13h behind              │
+         │ UK            15:23  Sat │
+         │  8h behind               │
+         │ SF            07:23  Sat │
+         │  16h behind              │
+         └──────────────────────────┘
 ```
+
+Requires **macOS 14 or later**.
 
 ## Features
 
@@ -134,15 +139,18 @@ Tools, so full Xcode still isn't needed.
 
 | Path | Purpose |
 | --- | --- |
+| `Package.swift` | SwiftPM manifest; macOS 14 deployment target |
 | `Sources/MultiClock/MultiClockApp.swift` | `@main`, wires up the `MenuBarExtra` and `Settings` scenes |
 | `Sources/MultiClock/Models/Clock.swift` | The clock value type |
 | `Sources/MultiClock/Models/ClockStore.swift` | Clocks + preferences, persisted to `UserDefaults` |
+| `Sources/MultiClock/Models/PlanningState.swift` | The planned instant and its anchor row |
 | `Sources/MultiClock/Support/Ticker.swift` | Boundary-aligned clock tick |
 | `Sources/MultiClock/Support/TimeFormatting.swift` | Cached formatters, day-offset math |
 | `Sources/MultiClock/Views/MenuBarLabel.swift` | The compact menu bar item |
-| `Sources/MultiClock/Views/ClockListView.swift` | The dropdown panel |
+| `Sources/MultiClock/Views/ClockListView.swift` | The dropdown panel, live and planning modes |
 | `Sources/MultiClock/Views/SettingsView.swift` | Settings window and time zone picker |
 | `Tools/GenerateIcon.swift` | Draws the app icon and writes the `.iconset` |
+| `Tools/GenerateDMGBackground.swift` | Draws the DMG installer window background |
 | `Resources/Info.plist` | Bundle metadata; `LSUIElement` makes it menu-bar-only |
 | `build.sh` | Compiles and assembles the `.app` |
 | `package.sh` | Builds universal, makes the `.dmg`, optionally notarizes |
@@ -198,12 +206,25 @@ iconutil -c icns Resources/AppIcon.iconset -o Resources/AppIcon.icns
 open Resources/AppIcon.iconset/icon_512x512.png
 ```
 
+## License
+
+[MIT](LICENSE). No affiliation with Second Clock — the app is referenced above only
+because it prompted this one; no code is shared with it.
+
 ## Notes
 
-- `ClockStore` and `Ticker` are singletons rather than SwiftUI environment objects.
-  The `MenuBarExtra` label renders in its own hosting context, where environment
-  objects injected at the `Scene` level don't reliably reach it.
+- `ClockStore`, `Ticker` and `PlanningState` are singletons rather than SwiftUI
+  environment objects. The `MenuBarExtra` label renders in its own hosting context,
+  where environment objects injected at the `Scene` level don't reliably reach it.
 - The ticker runs at 60s resolution and only drops to 1s when something on screen
   actually displays seconds.
-- The build is ad-hoc signed. That's enough to run locally and for `SMAppService` to
-  register launch-at-login, but distributing it would need a Developer ID.
+- `launchAtLogin` caches `SMAppService.mainApp.status` instead of reading it from a
+  computed property. That call is a synchronous XPC round trip measuring ~660ms warm,
+  and SwiftUI re-evaluated it on every body pass that touched it.
+- The bundle identifier is `com.neolunar7.multiclock`. It is deliberately not under
+  `local.*`: macOS keys menu bar scene state to the identifier, and a poisoned entry
+  makes a `MenuBarExtra`-only app terminate at launch with no error (see `7ed937c`).
+- The build is ad-hoc signed, which is enough to run it locally. Whether that also
+  satisfies `SMAppService` for launch-at-login has **not** been verified — the toggle
+  exists and errors are logged, but it has not been tested end to end. Distribution
+  needs a Developer ID regardless.
