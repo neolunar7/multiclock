@@ -25,18 +25,26 @@ Requires **macOS 14 or later**.
 ## Install
 
 ```sh
-brew install --cask neolunar7/tap/multiclock
+brew install neolunar7/tap/multiclock
+ln -s "$(brew --prefix)/opt/multiclock/MultiClock.app" /Applications/
 ```
 
-That's the whole install: the cask clears macOS's quarantine flag in a `postflight`
-step, so the app opens normally despite being ad-hoc signed rather than notarized.
-(This is also why the cask lives in a personal tap — the official homebrew-cask repo
-forbids postflight quarantine-stripping.)
+This is a **formula, not a cask**: Homebrew downloads the source and builds the app
+on your machine in about half a minute (Command Line Tools are enough, and Homebrew
+already requires them). A locally built app is not a downloaded executable, so it
+never carries a quarantine flag and Gatekeeper is never involved — no `xattr`, no
+security bypass, nothing to click through.
+
+The `ln -s` is one-time ever: it goes through `opt`, which always points at the
+current version, so `brew upgrade` doesn't break it. The formula can't create it for
+you — Homebrew sandboxes post-install steps and the sandbox refuses writes to
+`/Applications`. On `brew uninstall`, remove the link too.
 
 Alternatively, download the DMG from
 [Releases](https://github.com/neolunar7/multiclock/releases) and drag it into
-Applications — but then clear the flag yourself **before the first launch**, or
-Gatekeeper will refuse the app and may move it straight to the Trash:
+Applications — but a downloaded app **is** quarantined, so clear the flag yourself
+**before the first launch**, or Gatekeeper will refuse the app and may move it
+straight to the Trash:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/MultiClock.app
