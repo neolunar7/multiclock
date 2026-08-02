@@ -17,6 +17,10 @@ APP_NAME="MultiClock"
 CONFIG="${CONFIG:-release}"
 UNIVERSAL="${UNIVERSAL:-0}"
 APP_BUNDLE="build/${APP_NAME}.app"
+# Extra flags for `swift build`. The Homebrew formula sets --disable-sandbox here:
+# SwiftPM tries to sandbox its manifest compile, which fails inside Homebrew's own
+# build sandbox (nested sandboxes are not permitted).
+read -ra SWIFT_BUILD_FLAGS <<< "${SWIFT_BUILD_FLAGS:-}"
 
 # Prefer a real Developer ID if one exists; fall back to ad-hoc ("-").
 # Ad-hoc runs locally but Gatekeeper rejects it once a download sets the
@@ -45,8 +49,8 @@ if [[ "${UNIVERSAL}" == "1" ]]; then
     # `swift build --arch arm64 --arch x86_64` needs xcbuild from full Xcode, which
     # isn't installed. Building each slice separately and lipo-ing them gets the same
     # universal binary using only Command Line Tools.
-    swift build -c "${CONFIG}" --triple arm64-apple-macosx14.0  --scratch-path .build-arm64
-    swift build -c "${CONFIG}" --triple x86_64-apple-macosx14.0 --scratch-path .build-x86_64
+    swift build -c "${CONFIG}" ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"} --triple arm64-apple-macosx14.0  --scratch-path .build-arm64
+    swift build -c "${CONFIG}" ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"} --triple x86_64-apple-macosx14.0 --scratch-path .build-x86_64
 
     mkdir -p ".build/universal"
     lipo -create \
@@ -55,7 +59,7 @@ if [[ "${UNIVERSAL}" == "1" ]]; then
         -output ".build/universal/${APP_NAME}"
     BINARY=".build/universal/${APP_NAME}"
 else
-    swift build -c "${CONFIG}"
+    swift build -c "${CONFIG}" ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"}
     BINARY=".build/${CONFIG}/${APP_NAME}"
 fi
 
