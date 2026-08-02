@@ -22,6 +22,21 @@ menu bar:  ⌁  NY 10:23   🔋 84%  ⌘
 
 Requires **macOS 14 or later**.
 
+## Install
+
+```sh
+brew install --cask neolunar7/tap/multiclock
+xattr -dr com.apple.quarantine /Applications/MultiClock.app
+```
+
+Or download the DMG from [Releases](https://github.com/neolunar7/multiclock/releases)
+and drag it into Applications, then run the same `xattr` command.
+
+**Run it before opening the app.** This build is ad-hoc signed rather than notarized,
+so macOS quarantines it and Gatekeeper refuses the first launch — and it may move the
+app to the Trash rather than merely refusing it. Homebrew 6 removed `--no-quarantine`,
+so installing via Homebrew does not avoid this step.
+
 ## Features
 
 - One menu bar item, any number of clocks in the dropdown

@@ -43,10 +43,16 @@ cask "multiclock" do
   ]
 
   caveats <<~CAVEATS
-    MultiClock is not notarized by Apple. If macOS reports it as damaged,
-    install with --no-quarantine, or clear the flag manually:
+    MultiClock is not notarized by Apple, so Homebrew quarantines it and
+    Gatekeeper will refuse the first launch — and macOS may move the app
+    straight to the Trash rather than just refusing.
 
-      xattr -dr com.apple.quarantine "\$(brew --prefix)/Caskroom/multiclock"
+    Clear the flag BEFORE opening it for the first time:
+
+      xattr -dr com.apple.quarantine /Applications/MultiClock.app
+
+    Homebrew 6 has no --no-quarantine option; it was removed, so this step
+    cannot be skipped at install time.
   CAVEATS
 end
 EOF
