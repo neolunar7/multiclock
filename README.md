@@ -20,6 +20,9 @@ menu bar:  ⌁  NY 10:23   🔋 84%  ⌘
 ## Features
 
 - One menu bar item, any number of clocks in the dropdown
+- **Plan a time**: switch the panel from live to a chosen instant, type a wall-clock
+  time into *any* row, and every other row converts. Works in both directions — "I'm
+  free Sunday 21:00, is that sane for them?" and "they suggested 9am their time"
 - Per-clock custom label, drag to reorder
 - The clock at the top of the list is the one shown in the menu bar — reordering is
   how you change it, so there's no separate setting to keep in sync with the order
@@ -116,6 +119,39 @@ Tools, so full Xcode still isn't needed.
 | `Resources/Info.plist` | Bundle metadata; `LSUIElement` makes it menu-bar-only |
 | `build.sh` | Compiles and assembles the `.app` |
 | `package.sh` | Builds universal, makes the `.dmg`, optionally notarizes |
+
+## Planning a time
+
+The panel has a **Now / Plan a time** toggle. In planning mode it renders a single
+chosen instant rather than the live clock:
+
+```
+  [   Now   |  Plan a time  ]
+  [ Aug 3, 2026  ▾ ]              ↺
+
+  You            [ 21:00 ]   Sun     <- anchor, editable
+   Seoul
+  NY               08:00     Sun     <- click to make it the anchor
+  UK               13:00     Sun
+  SF               05:00     Sun
+```
+
+Every row shows the same moment in its own zone, so editing any row is just a
+different way of naming that moment. The row you type into is the *anchor*, and the
+header date is interpreted in the anchor's zone.
+
+Design notes:
+
+- Your own zone appears as a "You" row only while planning. In live mode it would be
+  noise — the menu bar already shows local time — but without it there's nothing
+  anchoring a conversion.
+- The panel always reverts to live time when reopened. A stale planned time that
+  looks like the current time is the exact error this feature exists to prevent.
+- Entering planning mode rounds up to the next quarter hour, because these are
+  meeting times.
+- `PlanningState.proxyBinding` exists because SwiftUI's pickers always interpret their
+  value in the *current* zone. To edit another zone's wall clock, the picker is handed
+  a shifted proxy date and the shift is undone on the way back.
 
 ## The icon
 
